@@ -49,11 +49,14 @@ cat > ~/.config/systemd/user/operit-bridge.service << 'EOF'
 [Unit]
 Description=Operit Bridge - Linux Desktop Bridge for AI Agent
 After=network.target
+Wants=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
-ExecStart=python3 %h/.local/bin/operit-bridge
+ExecStart=%h/.local/bin/operit-bridge
 Restart=always
-RestartSec=5
+RestartSec=3
 
 [Install]
 WantedBy=default.target
@@ -147,10 +150,13 @@ install operit-bridge on this linux desktop:
    [Unit]
    Description=Operit Bridge - Linux Desktop Bridge for AI Agent
    After=network.target
+   Wants=network.target
+   StartLimitIntervalSec=60
+   StartLimitBurst=5
    [Service]
-   ExecStart=python3 %h/.local/bin/operit-bridge
+   ExecStart=%h/.local/bin/operit-bridge
    Restart=always
-   RestartSec=5
+   RestartSec=3
    [Install]
    WantedBy=default.target
 
