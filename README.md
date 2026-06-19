@@ -29,7 +29,7 @@
 ### 1. 下载
 
 ```bash
-wget https://raw.githubusercontent.com/kars/operit-bridge/main/operit_bridge.py -O ~/.local/bin/operit-bridge
+wget https://raw.githubusercontent.com/Karzzzzz520/operit-bridge/main/operit_bridge.py -O ~/.local/bin/operit-bridge
 chmod +x ~/.local/bin/operit-bridge
 ```
 
@@ -140,7 +140,7 @@ curl -X POST http://127.0.0.1:21073 \
 ```text
 install operit-bridge on this linux desktop:
 
-1. download operit_bridge.py from https://raw.githubusercontent.com/kars/operit-bridge/main/operit_bridge.py
+1. download operit_bridge.py from https://raw.githubusercontent.com/Karzzzzz520/operit-bridge/main/operit_bridge.py
    save to ~/.local/bin/operit-bridge and chmod +x
 
 2. create systemd user service at ~/.config/systemd/user/operit-bridge.service:
