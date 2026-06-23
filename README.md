@@ -1,62 +1,82 @@
 # Operit Linux Bridge
 
-> Linux 桌面桥接服务 —— 让 Android AI Agent 直接操控你的 Linux 桌面
+> Linux 桌面桥接服务：让 Android/Operit AI Agent 通过局域网 HTTP API 稳定控制 Linux 桌面。
 
-一个轻量级的 HTTP 桥接服务（134行 Python），运行在 Linux 桌面端，让手机上的 AI Agent 可以通过 HTTP API 在桌面执行 Shell 命令、读写文件、管理进程。
+`operit-bridge` 是一个轻量 Python 服务端，运行在 Linux 桌面用户会话中，配合 Operit 沙盒包 `linux_bridge` 使用。它可以让 AI Agent 直接执行命令、读写文件、管理进程、读取桌面环境、发送通知、操作剪贴板和监听文件变化。
 
-**零依赖**，Python 3 标准库直跑。
+## 特性
 
----
+- **轻量可控**：Python 3 标准库为主，单文件部署，易审计。
+- **桌面会话能力**：继承 `DISPLAY`、`DBUS_SESSION_BUS_ADDRESS` 等环境变量，可启动 GUI 应用。
+- **文件系统操作**：读写、追加、删除、复制、移动、统计、列目录，支持 UTF-8/base64。
+- **进程管理**：进程列表、进程详情、后台启动、终止进程。
+- **桌面集成**：剪贴板读取/写入、`notify-send` 桌面通知。
+- **文件监控**：基于 `inotifywait` 的 watch 能力，返回 PID，可手动停止。
+- **稳定运行**：推荐 systemd --user 托管，支持自启、自愈、日志与内存限制。
 
-## ✨ 功能
+## API Actions
 
-| 动作 | 说明 |
-|------|------|
+| Action | 功能 |
+| --- | --- |
+| `ping` | 健康检查、版本、PID、运行时间 |
 | `exec` | 执行 Shell 命令，返回 stdout/stderr/exit_code |
-| `exec_bg` | 后台启动进程（GUI 应用、服务等） |
-| `read` | 读取文件内容（支持偏移和截断） |
-| `write` | 写入/追加文件（支持 chmod） |
-| `delete` | 删除文件或目录（支持递归） |
-| `env` | 获取桌面环境变量（DISPLAY、DBUS 等） |
-| `ping` | 健康检查 |
+| `exec_bg` | 后台启动命令，立即返回 PID |
+| `exec_stream` | 流式执行占位接口（当前返回完整输出） |
+| `read` | 读取文件，支持 offset/limit/base64 |
+| `write` | 写入文件，自动创建父目录，支持 append/base64/mode |
+| `delete` | 删除文件或目录，支持递归 |
+| `list_dir` | 列出目录内容和元数据 |
+| `stat` | 获取文件/目录 size/mode/mtime/atime/type |
+| `mkdir` | 创建目录，支持递归 |
+| `move` | 移动或重命名文件/目录 |
+| `copy` | 复制文件或目录 |
+| `exists` | 检查路径是否存在 |
+| `process_list` | 列出进程，支持 keyword/sort/limit |
+| `process_info` | 获取单个进程详情 |
+| `process_kill` | 发送信号终止进程 |
+| `sysinfo` | 获取 hostname/kernel/python/user/memory/disk |
+| `env` | 获取完整桌面环境变量 |
+| `clipboard_read` | 读取 Wayland/X11 剪贴板 |
+| `clipboard_write` | 写入 Wayland/X11 剪贴板 |
+| `notify` | 发送桌面通知 |
+| `watch` | 监听文件/目录变动，返回 watch PID |
 
-所有操作都在桌面用户的环境中执行，具有完整的 GUI 应用启动能力和文件系统访问权限。
-
----
-
-## 📦 手动安装
-
-### 1. 下载
+## 快速安装
 
 ```bash
+mkdir -p ~/.local/bin
 wget https://raw.githubusercontent.com/Karzzzzz520/operit-linux-bridge/main/operit_bridge.py -O ~/.local/bin/operit-bridge
 chmod +x ~/.local/bin/operit-bridge
 ```
 
-> 确保 `~/.local/bin` 在你的 `PATH` 里（大多数 Linux 发行版默认包含）
+临时启动：
 
-### 2. 启动
-
-**临时测试：**
 ```bash
 python3 ~/.local/bin/operit-bridge
 ```
 
-**systemd 用户服务（推荐，开机自启）：**
+## systemd 用户服务（推荐）
+
 ```bash
 mkdir -p ~/.config/systemd/user
 cat > ~/.config/systemd/user/operit-bridge.service << 'EOF'
 [Unit]
-Description=Operit Bridge - Linux Desktop Bridge for AI Agent
+Description=Operit Bridge - Local command executor for AI agent
+Documentation=https://github.com/AAswordman/Operit
 After=network.target
 Wants=network.target
 StartLimitIntervalSec=60
-StartLimitBurst=5
+StartLimitBurst=10
 
 [Service]
+Type=simple
 ExecStart=%h/.local/bin/operit-bridge
 Restart=always
 RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=operit-bridge
+MemoryMax=64M
 
 [Install]
 WantedBy=default.target
@@ -64,11 +84,61 @@ EOF
 
 systemctl --user daemon-reload
 systemctl --user enable --now operit-bridge
+systemctl --user status operit-bridge --no-pager -l
 ```
 
-### 3. 防火墙（可选）
+## 验证
 
-服务监听 `0.0.0.0:21073`，如需局域网访问：
+```bash
+curl -s -X POST http://127.0.0.1:21073/ \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"ping"}'
+```
+
+期望返回：
+
+```json
+{"ok": true, "pong": true}
+```
+
+## 使用示例
+
+执行命令：
+
+```bash
+curl -s -X POST http://127.0.0.1:21073/ \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"exec","command":"uname -a"}'
+```
+
+读取文件：
+
+```bash
+curl -s -X POST http://127.0.0.1:21073/ \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"read","path":"/etc/os-release"}'
+```
+
+发送通知：
+
+```bash
+curl -s -X POST http://127.0.0.1:21073/ \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"notify","summary":"Operit","body":"Bridge online"}'
+```
+
+监听文件：
+
+```bash
+curl -s -X POST http://127.0.0.1:21073/ \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"watch","path":"/home/user/.bashrc"}'
+```
+
+## 防火墙
+
+服务默认监听 `0.0.0.0:21073`。若需要局域网访问，请放行端口：
+
 ```bash
 # firewalld
 sudo firewall-cmd --add-port=21073/tcp --permanent
@@ -76,107 +146,23 @@ sudo firewall-cmd --reload
 
 # ufw
 sudo ufw allow 21073/tcp
-
-# iptables
-sudo iptables -A INPUT -p tcp --dport 21073 -j ACCEPT
 ```
 
----
+## 安全说明
 
-## 🌐 API 格式
+该桥接服务能执行本机用户权限下的命令，**不要暴露到公网**。建议：
 
-所有请求为 `POST`，Body 为 JSON：
+- 仅在可信局域网使用。
+- 通过防火墙限制来源 IP。
+- 不需要时关闭服务：`systemctl --user stop operit-bridge`。
+- 配合 Operit 沙盒包 `linux_bridge` 使用时，确认 `linux_bridge_url` 指向可信主机。
 
-```json
-{
-  "action": "exec",
-  "command": "echo hello",
-  "cwd": "/home/user",
-  "timeout_ms": 15000,
-  "env": {"KEY": "value"}
-}
-```
+## 对应 Operit 沙盒包
 
-响应：
+推荐搭配沙盒包：`linux_bridge`。
 
-```json
-{
-  "ok": true,
-  "id": null,
-  "exit_code": 0,
-  "stdout": "hello\n",
-  "stderr": "",
-  "pid": 12345,
-  "elapsed_ms": 350427
-}
-```
+沙盒包提供 22 个工具：命令执行、文件读写、目录操作、进程管理、系统信息、桌面通知、剪贴板、文件监控等。
 
-完整 API 参见源码 `operit_bridge.py`。
-
----
-
-## 📡 客户端示例
-
-```bash
-# 执行命令
-curl -X POST http://127.0.0.1:21073 \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"exec","command":"neofetch"}'
-
-# 启动 GUI 应用
-curl -X POST http://127.0.0.1:21073 \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"exec_bg","command":"firefox"}'
-
-# 读取文件
-curl -X POST http://127.0.0.1:21073 \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"read","path":"/etc/os-release"}'
-```
-
----
-
-## 🤖 给 AI Agent 的一键安装 Prompt
-
-将此 prompt 发给你的 AI Agent，它会自动完成安装：
-
-```text
-install operit-bridge on this linux desktop:
-
-1. download operit_bridge.py from https://raw.githubusercontent.com/Karzzzzz520/operit-linux-bridge/main/operit_bridge.py
-   save to ~/.local/bin/operit-bridge and chmod +x
-
-2. create systemd user service at ~/.config/systemd/user/operit-bridge.service:
-   [Unit]
-   Description=Operit Bridge - Linux Desktop Bridge for AI Agent
-   After=network.target
-   Wants=network.target
-   StartLimitIntervalSec=60
-   StartLimitBurst=5
-   [Service]
-   ExecStart=%h/.local/bin/operit-bridge
-   Restart=always
-   RestartSec=3
-   [Install]
-   WantedBy=default.target
-
-3. run: systemctl --user daemon-reload && systemctl --user enable --now operit-bridge
-
-4. verify with curl POST to http://127.0.0.1:21073 action=ping, expect {"ok":true,"pong":true}
-
-5. optional: open firewall port 21073/tcp for LAN access
-```
-
----
-
-## 🔒 安全
-
-- 服务监听 `0.0.0.0`，建议放在可信网络或使用防火墙限制来源 IP
-- 不内置认证，信任边界由网络层控制
-- 仅在有需求的机器上运行，勿暴露到公网
-
----
-
-## 🪪 许可
+## License
 
 MIT
