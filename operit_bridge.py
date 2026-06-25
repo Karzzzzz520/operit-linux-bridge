@@ -127,13 +127,14 @@ class Handler(BaseHTTPRequestHandler):
         cwd = req.get('cwd') or os.getenv('HOME')
         env = os.environ.copy()
         env.update(req.get('env') or {})
+        call_start = time.time()
         proc = subprocess.Popen(cmd, shell=True, cwd=cwd, env=env,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
             stdout, stderr = proc.communicate(timeout=timeout)
             resp.update({"exit_code": proc.returncode, "stdout": stdout,
                          "stderr": stderr, "pid": proc.pid,
-                         "elapsed_ms": int((time.time() - START_TIME) * 1000)})
+                         "elapsed_ms": int((time.time() - call_start) * 1000)})
         except subprocess.TimeoutExpired:
             proc.kill()
             stdout, stderr = proc.communicate()
@@ -356,16 +357,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         resp.update({"ok": True, "summary": summary})
 
-    def _exec_stream(self,req,resp):
-        return self._exec(req,resp)
+    def _exec_stream(self, req, resp):
+        return self._exec(req, resp)
 
-    def _watch(self,req,resp):
-        path=req["path"]
-        r=req.get("recursive",False)
-        cmd="inotifywait -m" + (" -r" if r else "") + " " + path
+    def _watch(self, req, resp):
+        path = req["path"]
+        r = req.get("recursive", False)
+        cmd = "inotifywait -m" + (" -r" if r else "") + " " + path
         import subprocess as sp
-        p=sp.Popen(cmd,shell=True,stdout=sp.PIPE,stderr=sp.PIPE,text=True)
-        resp.update({"pid":p.pid,"watch_path":path})
+        p = sp.Popen(cmd, shell=True, stdout=sp.PIPE, stderr=sp.PIPE, text=True)
+        resp.update({"pid": p.pid, "watch_path": path})
 
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
@@ -381,15 +382,3 @@ def run():
 
 if __name__ == '__main__':
     run()
-
-    def _exec_stream(self,req,resp):
-        return self._exec(req,resp)
-
-    def _watch(self,req,resp):
-        path=req["path"]
-        r=req.get("recursive",False)
-        cmd="inotifywait -m" + (" -r" if r else "") + " " + path
-        import subprocess as sp
-        p=sp.Popen(cmd,shell=True,stdout=sp.PIPE,stderr=sp.PIPE,text=True)
-        resp.update({"pid":p.pid,"watch_path":path})
-
